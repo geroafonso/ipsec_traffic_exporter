@@ -1,9 +1,9 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 ###############################################################################
 # ipsec_traffic.py
 ###############################################################################
-#  Collects Libreswan IPsec traffic information using ipsec cli
+#  Collects StrongSwan IPsec traffic information using ipsec cli
 #  The result is reported in Bytes per IPsec connection
 #  Script arguments (not mandatory) to be used:
 #  -h, --help            show this help message and exit
@@ -20,14 +20,14 @@ import os
 import time
 import argparse as ap
 
-# exporter default port
+# Exporter default port
 exporter_port = 9754
-# default interval in seconds for generating metrics
+# Default interval in seconds for generating metrics
 scrape_interval = 15
-# default IP address is 0.0.0.0
+# Default IP address is 0.0.0.0
 listen_address = '0.0.0.0'
 
-# get command line arguments
+# Get command line arguments
 parser = ap.ArgumentParser(description='IPsec Traffic Exporter arguments')
 parser.add_argument('-a', '-address', '--address', dest='address', required=False,
                     help='IPsec Traffic Metrics are exposed on this IP address')
@@ -44,62 +44,84 @@ if args.port is not None:
 if args.interval is not None:
     scrape_interval = args.interval
 
-
 def get_ipsec_info(cmd):
     output = os.popen(cmd).read()
     lines = output.split('\n')
     return lines
 
+def parse_ipsec_status(lines):
+    connections = {}
+    current_connection = None
+    connection_state = None
+
+    for line in lines:
+        if 'IKEv2' in line and 'dpddelay' in line:
+            # Extract connection name
+            current_connection = line.split(':')[0].strip()
+            connection_state = None
+            connections[current_connection] = {"status": 0, "in": 0, "out": 0, "left_subnet": "unknown", "right_subnet": "unknown", "state": "unknown"}
+        elif 'ESTABLISHED' in line:
+            parts = line.split()
+            if current_connection:
+                connections[current_connection]["status"] = 1
+                connections[current_connection]["state"] = "ESTABLISHED"
+        elif 'INSTALLED' in line and current_connection:
+            parts = line.split()
+            try:
+                in_bytes = int(parts[parts.index('bytes_i') - 1].replace(',', ''))
+                out_bytes = int(parts[parts.index('bytes_o') - 1].replace(',', ''))
+            except (ValueError, IndexError):
+                in_bytes = 0
+                out_bytes = 0
+            connections[current_connection].update({"in": in_bytes, "out": out_bytes})
+        elif '===' in line and current_connection:
+            parts = line.split('===')
+            left_subnet = parts[0].strip().split()[-1]
+            right_subnet = parts[1].strip().split()[0]
+            connections[current_connection].update({"left_subnet": left_subnet, "right_subnet": right_subnet})
+
+    return connections
 
 def main():
-    gauge = prom.Gauge(
+    traffic_gauge = prom.Gauge(
         'ipsec_traffic',
         'Display IPsec Traffic Info',
-        ['connection', 'left_subnet', 'right_subnet', 'direction']
+        ['connection', 'name', 'left_subnet', 'right_subnet', 'direction', 'state']
     )
-    prom.start_http_server(exporter_port, addr=listen_address) 
+    status_gauge = prom.Gauge(
+        'ipsec_connection_status',
+        'Display IPsec Connection Status',
+        ['connection', 'name', 'state']
+    )
+    prom.start_http_server(exporter_port, addr=listen_address)
 
     while True:
-        connections = {}
-        traffic_list = get_ipsec_info("sudo ipsec trafficstatus")
-        if len(traffic_list[-1]) == 0:
-            del traffic_list[-1]
-        for line in traffic_list:
-            connection = line.split('"')[1]
-            tmp = line.split(',')
-            in_bytes = (tmp[3]).split('=')[1]
-            out_bytes = (tmp[4]).split('=')[1]
-            connections[connection] = {"in": in_bytes, "out": out_bytes}
+        traffic_list = get_ipsec_info("sudo ipsec statusall")
+        connections = parse_ipsec_status(traffic_list)
 
-        connection_list = get_ipsec_info("sudo ipsec status|grep '; eroute owner:'")
-        if len(connection_list[-1]) == 0:
-            del connection_list[-1]
-        for line in connection_list:
-            connection = line.split('"')[1]
-            tmp = line.split('=')
-            left_subnet = tmp[0].split(' ')[-1]
-            right_subnet = tmp[-1].split(';')[0]
-            if connection in connections:
-                connections[connection]["left_subnet"] = left_subnet
-                connections[connection]["right_subnet"] = right_subnet
-
-        gauge.clear()
-        for i in connections.keys():
-            gauge.labels(
-                i,
-                connections[i]['left_subnet'],
-                connections[i]['right_subnet'],
-                'in'
-            ).set(connections[i]['in'])
-            gauge.labels(
-                i,
-                connections[i]['left_subnet'],
-                connections[i]['right_subnet'],
-                'out'
-            ).set(connections[i]['out'])
+        traffic_gauge.clear()
+        status_gauge.clear()
+        for conn, data in connections.items():
+            status_gauge.labels(conn, conn, data['state']).set(data['status'])
+            traffic_gauge.labels(
+                conn,
+                conn,
+                data.get('left_subnet', 'unknown'),
+                data.get('right_subnet', 'unknown'),
+                'in',
+                data['state']
+            ).set(data['in'])
+            traffic_gauge.labels(
+                conn,
+                conn,
+                data.get('left_subnet', 'unknown'),
+                data.get('right_subnet', 'unknown'),
+                'out',
+                data['state']
+            ).set(data['out'])
 
         time.sleep(scrape_interval)
 
-
 if __name__ == '__main__':
     main()
+

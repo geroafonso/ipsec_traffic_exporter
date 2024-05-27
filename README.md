@@ -1,10 +1,10 @@
-# IPsec Traffic Exporter for Libreswan
+# IPsec Traffic Exporter for StrongSwan
 
-## This is a Prometheus exporter in Python running as OS service
+## This is a Prometheus exporter in Python running as an OS service
 
 ### IPsec Traffic metrics returned by the exporter
 
-The IPsec Traffic is returned in Bytes per the following ipsec parameters: (connection, left_subnet, right_subnet, direction(in/out)).
+The IPsec Traffic is returned in Bytes per the following IPsec parameters: (connection, name, left_subnet, right_subnet, direction(in/out), state).
 
 ### Prerequisites for installation
 
@@ -12,11 +12,11 @@ The IPsec Traffic is returned in Bytes per the following ipsec parameters: (conn
 pip install prometheus_client>=0.10.0
 ```
 
-At least the version 0.10.0 is required by `gauge.clear()`
+At least version 0.10.0 is required by `gauge.clear()`.
 
 ### Script location
 
-On your server where Libreswan IPsec runs, copy the script in /usr/local/bin/ and make it executable:
+On your server where StrongSwan IPsec runs, copy the script to `/usr/local/bin/` and make it executable:
 
 ```shell
 cp ipsec_traffic.py /usr/local/bin/
@@ -44,7 +44,7 @@ optional arguments:
 
 ### Run for test purpose
 
-The user that runs the command should have sudo rights because the scripts is calling ipsec command.
+The user that runs the command should have sudo rights because the script is calling the `ipsec` command.
 
 ```shell
 /usr/local/bin/ipsec_traffic.py
@@ -53,18 +53,16 @@ The user that runs the command should have sudo rights because the scripts is ca
 This will run with default values as follows:
 
 - listen address: 0.0.0.0
-
 - listen port: 9754
-
 - running interval in seconds: 15
 
-You may also run with custom listen address, port and interval:
+You may also run with a custom listen address, port, and interval:
 
 ```shell
 /usr/local/bin/ipsec_traffic.py -a 192.168.0.100 -p 48989 -i 30
 ```
 
-You may check in another terminal if the default port (i.e. 9754) is open on the default listen address (i.e. 0.0.0.0)
+You may check in another terminal if the default port (i.e., 9754) is open on the default listen address (i.e., 0.0.0.0):
 
 ```shell
 $ ss -nlt
@@ -73,13 +71,13 @@ LISTEN     0      128                   *:22                 *:*
 LISTEN     0      5               0.0.0.0:9754               *:*
 ```
 
-or the custom port (e.g. above 48989) is open on the custom listen address (e.g. above 192.168.0.100):
+Or if the custom port (e.g., 48989) is open on the custom listen address (e.g., 192.168.0.100):
 
 ```shell
 $ ss -nlt
 State      Recv-Q Send-Q    Local Address:Port    Peer Address:Port
 LISTEN     0      128                   *:22                 *:*
-LISTEN     0      5         192.168.0.100:9754               *:*
+LISTEN     0      5         192.168.0.100:48989               *:*
 ```
 
 You may also check the metrics returned by the ipsec_traffic_exporter with:
@@ -88,7 +86,7 @@ You may also check the metrics returned by the ipsec_traffic_exporter with:
 curl localhost:9754
 ```
 
-The result may be similar with:
+The result may be similar to:
 
 ```raw
 # HELP process_virtual_memory_bytes Virtual memory size in bytes.
@@ -114,17 +112,17 @@ process_max_fds 1024.0
 python_info{implementation="CPython",major="2",minor="7",patchlevel="5",version="2.7.5"} 1.0
 # HELP ipsec_traffic Display IPsec Traffic Info
 # TYPE ipsec_traffic gauge
-ipsec_traffic{connection="dev-01",direction="out",left_subnet="10.153.214.0/24",right_subnet="10.123.71.0/24"} 7.386561e+06
-ipsec_traffic{connection="dev-07",direction="out",left_subnet="10.153.214.0/24",right_subnet="10.232.81.0/22"} 26544.0
-ipsec_traffic{connection="dev-10",direction="in",left_subnet="10.153.214.0/24",right_subnet="10.10.49.0/22"} 1.87714721e+08
-ipsec_traffic{connection="dev-01",direction="in",left_subnet="10.153.214.0/24",right_subnet="10.123.71.0/24"} 5.69280513e+08
-ipsec_traffic{connection="dev-07",direction="in",left_subnet="10.153.214.0/24",right_subnet="10.232.81.0/22"} 26544.0
-ipsec_traffic{connection="dev-10",direction="out",left_subnet="10.153.214.0/24",right_subnet="10.10.49.0/22"} 1.41831654e+08
+ipsec_traffic{connection="dev-01",direction="out",left_subnet="10.153.214.0/24",right_subnet="10.123.71.0/24",state="ESTABLISHED"} 7.386561e+06
+ipsec_traffic{connection="dev-07",direction="out",left_subnet="10.153.214.0/24",right_subnet="10.232.81.0/22",state="ESTABLISHED"} 26544.0
+ipsec_traffic{connection="dev-10",direction="in",left_subnet="10.153.214.0/24",right_subnet="10.10.49.0/22",state="ESTABLISHED"} 1.87714721e+08
+ipsec_traffic{connection="dev-01",direction="in",left_subnet="10.153.214.0/24",right_subnet="10.123.71.0/24",state="ESTABLISHED"} 5.69280513e+08
+ipsec_traffic{connection="dev-07",direction="in",left_subnet="10.153.214.0/24",right_subnet="10.232.81.0/22",state="ESTABLISHED"} 26544.0
+ipsec_traffic{connection="dev-10",direction="out",left_subnet="10.153.214.0/24",right_subnet="10.10.49.0/22",state="ESTABLISHED"} 1.41831654e+08
 ```
 
 ### The service unit config file
 
-Create file `/etc/systemd/system/ipsec_traffic.service` with the following content:
+Create the file `/etc/systemd/system/ipsec_traffic.service` with the following content:
 
 ```shell
 [Unit]
@@ -160,7 +158,7 @@ Check the service status:
 systemctl status ipsec_traffic
 ```
 
-The output of service status may be similar with:
+The output of service status may be similar to:
 
 ```shell
 Redirecting to /bin/systemctl status ipsec_traffic.service
@@ -175,39 +173,38 @@ Sep 25 17:21:26 my-vpn-node sudo[7251]:     root : TTY=unknown ; PWD=/ ; USER=ro
 Sep 25 17:21:26 my-vpn-node sudo[7255]:     root : TTY=unknown ; PWD=/ ; USER=root ; COMMAND=/sbin/ipsec trafficstatus
 ```
 
-By default the service will expose the metrics both in / and in /metrics
+By default, the service will expose the metrics both in `/` and in `/metrics`.
 
 ### Change the exporter listen address
 
-You may change the listen address by changing the ExecStart in service unit:
+You may change the listen address by changing the ExecStart in the service unit:
 
 ```shell
 ExecStart=/usr/local/bin/ipsec_traffic.py --address=192.168.0.100
 ```
 
-After changing the listen address you need to restart the service.
+After changing the listen address, you need to restart the service.
 
 ### Change the exporter port
 
-You may change the port by changing the ExecStart in service unit:
+You may change the port by changing the ExecStart in the service unit:
 
 ```shell
 ExecStart=/usr/local/bin/ipsec_traffic.py --port=56789
 ```
 
-After changing the port you need to restart the service.
+After changing the port, you need to restart the service.
 
 ### Change the running interval
 
-You may change the running interval (in seconds) by changing the ExecStart in service unit:
+You may change the running interval (in seconds) by changing the ExecStart in the service unit:
 
 ```shell
 ExecStart=/usr/local/bin/ipsec_traffic.py --interval=10
 ```
 
-After changing the interval you need to restart the service.
+After changing the interval, you need to restart the service.
 
-### Allow the exporter port in firewall
+### Allow the exporter port in the firewall
 
-In order for the exporter metrics to be accessible to an external Prometheus server
-you need to allow the access to the listen address and port in the server firewall.
+In order for the exporter metrics to be accessible to an external Prometheus server, you need to allow access to the listen address and port in the server firewall.
